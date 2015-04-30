@@ -5,7 +5,7 @@ import java.util.List;
 
 import android.os.Handler;
 
-import android.animation.ObjectAnimator;
+import com.nineoldandroids.animation.ObjectAnimator;
 
 import info.mabin.android.bundleanimator.ObjectAnimatorInfo;
 
