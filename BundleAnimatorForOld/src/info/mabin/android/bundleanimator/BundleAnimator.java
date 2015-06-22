@@ -1,16 +1,19 @@
 package info.mabin.android.bundleanimator;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.annotation.TargetApi;
+import android.os.Build;
 import android.os.Handler;
-
-import com.nineoldandroids.animation.ObjectAnimator;
-
+import android.util.Log;
 import info.mabin.android.bundleanimator.ObjectAnimatorInfo;
 
 public class BundleAnimator implements BundleAnimatorListener{
-	private static final int FRAME_TERM = 10;
+	private static final int FRAME_TERM = 16;	// 60 fps
+	
+	private BundleAnimator instance;
 	
 	private Handler handler = new Handler();
 	
@@ -26,10 +29,40 @@ public class BundleAnimator implements BundleAnimatorListener{
 	private long currentPlaytime = 0;
 	
 	private ObjectAnimatorInfo[] arrTargetAnimatorInfo;
-	private ObjectAnimator[] arrTargetAnimator;
+	private android.animation.ObjectAnimator[] arrTargetAnimatorNew;
+	private com.nineoldandroids.animation.ObjectAnimator[] arrTargetAnimatorOld;
 	
 	private Object target = null;
 
+	private static Method methodSetTarget;
+	private static Method methodSetRealCurrentPlayTime;
+	
+	static{
+		String postFix = "Old";
+
+		try {
+			BundleAnimator.class.getClassLoader().loadClass("android.animation.ObjectAnimator");
+			
+			Log.d("ObjectAnimator Version", "Native (API 11)");
+			postFix = "New";
+		} catch (ClassNotFoundException e) {
+			Log.d("ObjectAnimator Version", "NineOldAndroids");
+			postFix = "Old";
+		}
+		
+		try {
+			methodSetTarget = BundleAnimator.class.getDeclaredMethod("setTarget" + postFix, Object.class);
+			methodSetRealCurrentPlayTime = BundleAnimator.class.getDeclaredMethod("setRealCurrentPlayTime" + postFix, long.class);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}	
+
+	}
+
+	public BundleAnimator(){
+		instance = this;
+	}
+	
 	public void addListener(BundleAnimatorListener animatorListener){
 		listListener.add(animatorListener);
 	}
@@ -38,7 +71,15 @@ public class BundleAnimator implements BundleAnimatorListener{
 		this.setRealCurrentPlayTime((long) (targetMilliSec * (float) playSpeed));
 	}
 	
-	private void setRealCurrentPlayTime(long targetMilliSec){
+	protected void setRealCurrentPlayTime(long targetMilliSec){
+		try {
+			methodSetRealCurrentPlayTime.invoke(instance, targetMilliSec);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	protected void setRealCurrentPlayTimeNew(long targetMilliSec){
 		if(isStarted == false){
 			this.onAnimationStart(this);
 			
@@ -49,11 +90,33 @@ public class BundleAnimator implements BundleAnimatorListener{
 		for(int i = 0; i < arrTargetAnimatorInfo.length; i++){
 			long startDelay = arrTargetAnimatorInfo[i].getStartDelay();
 			if(startDelay > targetMilliSec){
-				arrTargetAnimator[i].setCurrentPlayTime(0);
+				arrTargetAnimatorNew[i].setCurrentPlayTime(0);
 			} else {
 				long tmpTargetMilliSec = targetMilliSec;
 				tmpTargetMilliSec = targetMilliSec - startDelay;
-				arrTargetAnimator[i].setCurrentPlayTime(tmpTargetMilliSec);
+				arrTargetAnimatorNew[i].setCurrentPlayTime(tmpTargetMilliSec);
+			}
+		}
+		
+		this.onAnimationPlaying(this, (long) (currentPlaytime / (float)playSpeed));
+	}
+	
+	protected void setRealCurrentPlayTimeOld(long targetMilliSec){
+		if(isStarted == false){
+			this.onAnimationStart(this);
+			
+			isStarted = true;
+		}
+		
+		this.currentPlaytime = targetMilliSec;
+		for(int i = 0; i < arrTargetAnimatorInfo.length; i++){
+			long startDelay = arrTargetAnimatorInfo[i].getStartDelay();
+			if(startDelay > targetMilliSec){
+				arrTargetAnimatorOld[i].setCurrentPlayTime(0);
+			} else {
+				long tmpTargetMilliSec = targetMilliSec;
+				tmpTargetMilliSec = targetMilliSec - startDelay;
+				arrTargetAnimatorOld[i].setCurrentPlayTime(tmpTargetMilliSec);
 			}
 		}
 		
@@ -118,6 +181,7 @@ public class BundleAnimator implements BundleAnimatorListener{
 				if(currentPlaytime < 0){
 					currentPlaytime = 0;
 					setRealCurrentPlayTime(currentPlaytime);
+					BundleAnimator.this.onAnimationEndReverse(BundleAnimator.this);
 					isStarted = false;
 				} else {
 					currentPlaytime -= FRAME_TERM * (float) playSpeed;
@@ -133,33 +197,71 @@ public class BundleAnimator implements BundleAnimatorListener{
 		
 		handler.postDelayed(runnable, FRAME_TERM);
 	}
-	
+
 	public void setTarget(Object target){
+		try {
+			methodSetTarget.invoke(instance, target);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	@TargetApi(Build.VERSION_CODES.HONEYCOMB)
+	protected void setTargetNew(Object target){
 		playSpeed = 1;
 		isStarted = false;
 		this.target = target;
 
-		arrTargetAnimator = new ObjectAnimator[arrTargetAnimatorInfo.length];
+		arrTargetAnimatorNew = new android.animation.ObjectAnimator[arrTargetAnimatorInfo.length];
 		
 		for(int i = 0; i < arrTargetAnimatorInfo.length; i++){
 			Object currentTargetArgs;
 			currentTargetArgs = arrTargetAnimatorInfo[i].getArgs();
 			
 			if(currentTargetArgs.getClass().getCanonicalName().equals("float[]")){
-				arrTargetAnimator[i] = ObjectAnimator.ofFloat(
+				arrTargetAnimatorNew[i] = android.animation.ObjectAnimator.ofFloat(
 						target, 
 						arrTargetAnimatorInfo[i].getProperty(), 
 						(float[])currentTargetArgs);
 			} else {
-				arrTargetAnimator[i] = ObjectAnimator.ofInt(
+				arrTargetAnimatorNew[i] = android.animation.ObjectAnimator.ofInt(
 						target, 
 						arrTargetAnimatorInfo[i].getProperty(), 
 						(int[])currentTargetArgs);				
 			}
 			
-			arrTargetAnimator[i].setDuration(arrTargetAnimatorInfo[i].getDuration());
-			arrTargetAnimator[i].setStartDelay(arrTargetAnimatorInfo[i].getStartDelay());
-			arrTargetAnimator[i].setInterpolator(arrTargetAnimatorInfo[i].getInterpolator());
+			arrTargetAnimatorNew[i].setDuration(arrTargetAnimatorInfo[i].getDuration());
+			arrTargetAnimatorNew[i].setStartDelay(arrTargetAnimatorInfo[i].getStartDelay());
+			arrTargetAnimatorNew[i].setInterpolator(arrTargetAnimatorInfo[i].getInterpolator());
+		}
+	}
+
+	protected void setTargetOld(Object target){
+		playSpeed = 1;
+		isStarted = false;
+		this.target = target;
+
+		arrTargetAnimatorOld = new com.nineoldandroids.animation.ObjectAnimator[arrTargetAnimatorInfo.length];
+		
+		for(int i = 0; i < arrTargetAnimatorInfo.length; i++){
+			Object currentTargetArgs;
+			currentTargetArgs = arrTargetAnimatorInfo[i].getArgs();
+			
+			if(currentTargetArgs.getClass().getCanonicalName().equals("float[]")){
+				arrTargetAnimatorOld[i] = com.nineoldandroids.animation.ObjectAnimator.ofFloat(
+						target, 
+						arrTargetAnimatorInfo[i].getProperty(), 
+						(float[])currentTargetArgs);
+			} else {
+				arrTargetAnimatorOld[i] = com.nineoldandroids.animation.ObjectAnimator.ofInt(
+						target, 
+						arrTargetAnimatorInfo[i].getProperty(), 
+						(int[])currentTargetArgs);				
+			}
+			
+			arrTargetAnimatorOld[i].setDuration(arrTargetAnimatorInfo[i].getDuration());
+			arrTargetAnimatorOld[i].setStartDelay(arrTargetAnimatorInfo[i].getStartDelay());
+			arrTargetAnimatorOld[i].setInterpolator(arrTargetAnimatorInfo[i].getInterpolator());
 		}
 	}
 	
@@ -234,6 +336,13 @@ public class BundleAnimator implements BundleAnimatorListener{
 	public void onAnimationPlaying(BundleAnimator animation, long currentTime) {
 		for(BundleAnimatorListener listener: listListener){
 			listener.onAnimationPlaying(animation, currentTime);
+		}
+	}
+
+	@Override
+	public void onAnimationEndReverse(BundleAnimator animator) {
+		for(BundleAnimatorListener listener: listListener){
+			listener.onAnimationEndReverse(animator);
 		}
 	}
 }

@@ -6,4 +6,5 @@ public interface BundleAnimatorListener{
 	public void onAnimationCancel(BundleAnimator animation);
 	public void onAnimationRepeat(BundleAnimator animation);
 	public void onAnimationPlaying(BundleAnimator animation, long currentTime);
+	public void onAnimationEndReverse(BundleAnimator animator);
 }
