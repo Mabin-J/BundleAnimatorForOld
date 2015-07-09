@@ -12,6 +12,9 @@ import info.mabin.android.bundleanimator.ObjectAnimatorInfo;
 
 public class BundleAnimator implements BundleAnimatorListener{
 	private static final int FRAME_TERM = 16;	// 60 fps
+	private static final String[] API11_TESTED_DEVICES = {
+		"Nexus"
+	};
 	
 	private BundleAnimator instance;
 	
@@ -43,10 +46,20 @@ public class BundleAnimator implements BundleAnimatorListener{
 		try {
 			BundleAnimator.class.getClassLoader().loadClass("android.animation.ObjectAnimator");
 			
-			Log.d("ObjectAnimator Version", "Native (API 11)");
-			postFix = "New";
+			for(String search: API11_TESTED_DEVICES){
+				if(android.os.Build.MODEL.contains(search)){
+					postFix = "New";
+					Log.d("ObjectAnimator Type", "Native (API 11)");
+				}
+			}
+			
+			if(postFix.equals("Old")){
+				postFix = "Old";
+				Log.d("ObjectAnimator Type", "NineOldAndroids");
+				Log.d("ObjectAnimator Type", "(Device support API 11 but it maybe has bug of Animation Speed)");
+			}
 		} catch (ClassNotFoundException e) {
-			Log.d("ObjectAnimator Version", "NineOldAndroids");
+			Log.d("ObjectAnimator Type", "NineOldAndroids");
 			postFix = "Old";
 		}
 		
